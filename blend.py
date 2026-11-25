@@ -46,6 +46,21 @@ OM_URL = (
     "&timezone=America%2FLos_Angeles"
 ).format(lat=LAT, lon=LON, h=HOURS)
 
+# ---- Clothing recommendation (window-based) -------------------------------
+WINDOW_START, WINDOW_END = 9, 17        # 9am-5pm; hours 9..16 inclusive
+RAIN_PROB_MIN = 50                      # % -- max probability in window
+RAIN_TOTAL_MM = 1.0                     # total precip in window ...
+RAIN_HOURLY_MM = 0.5                    # ... or any single hour at/above this
+COLD_CAP_BELOW = 40                     # < 40F            -> Jacket + Cap
+THICK_BELOW = 53                        # 40-53F           -> Thick Jacket
+ENJOY_ABOVE = 70                        # all hrs > 70F    -> Enjoy; else fleece
+
+REC_URL = (
+    "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+    "&hourly=apparent_temperature,temperature_2m,precipitation_probability,precipitation"
+    "&forecast_days=2&temperature_unit=fahrenheit&timezone=America%2FLos_Angeles"
+).format(lat=LAT, lon=LON)
+
 
 def get(url):
     req = urllib.request.Request(
@@ -55,9 +70,7 @@ def get(url):
         return json.load(r)
 
 
-def blend():
-    om = get(OM_URL)["hourly"]
-
+def fetch_nws():
     nws = {}
     try:
         for p in get(NWS_URL)["properties"]["periods"]:
@@ -66,6 +79,67 @@ def blend():
             nws[p["startTime"][:16]] = p
     except Exception as e:
         print("NWS fetch failed, using Open-Meteo only:", e, flush=True)
+    return nws
+
+
+def fmt_hour(t):
+    h = int(t[11:13])
+    return "%d%s" % (h % 12 or 12, "am" if h < 12 else "pm")
+
+
+def recommend(nws):
+    """Worst-case clothing call for the 9am-5pm window (today, or tomorrow
+    once today's window is over). Rain beats temperature."""
+    d = get(REC_URL)
+    om = d["hourly"]
+    local_now = time.gmtime(time.time() + d.get("utc_offset_seconds", -28800))
+    today = time.strftime("%Y-%m-%d", local_now)
+    tomorrow = om["time"][-1][:10]
+    day, label = (today, "Today") if local_now.tm_hour < WINDOW_END else (tomorrow, "Tomorrow")
+
+    rows = []
+    for i, t in enumerate(om["time"]):
+        if t[:10] != day or not (WINDOW_START <= int(t[11:13]) < WINDOW_END):
+            continue
+        feels = om["apparent_temperature"][i]
+        pop = om["precipitation_probability"][i] or 0
+        p = nws.get(t)
+        if p:
+            avg_t = (om["temperature_2m"][i] + p["temperature"]) / 2
+            feels += avg_t - om["temperature_2m"][i]
+            npop = (p.get("probabilityOfPrecipitation") or {}).get("value")
+            if npop is not None:
+                pop = round((pop + npop) / 2)
+        rows.append((t, feels, pop, om["precipitation"][i] or 0.0))
+    if not rows:
+        return None
+
+    low_t, low, _, _ = min(rows, key=lambda r: r[1])
+    max_pop = max(r[2] for r in rows)
+    total_mm = sum(r[3] for r in rows)
+    max_hr_mm = max(r[3] for r in rows)
+    wet_t = max(rows, key=lambda r: (r[2], r[3]))[0]
+
+    rainy = max_pop >= RAIN_PROB_MIN and (total_mm >= RAIN_TOTAL_MM or max_hr_mm >= RAIN_HOURLY_MM)
+    if rainy:
+        text = "Rain Jacket"
+        why = "Rain %d%% around %s - %.1f mm" % (max_pop, fmt_hour(wet_t), total_mm)
+    else:
+        if low < COLD_CAP_BELOW:
+            text = "Jacket + Cap"
+        elif low < THICK_BELOW:
+            text = "Thick Jacket"
+        elif low <= ENJOY_ABOVE:
+            text = "Thin Fleece"
+        else:
+            text = "Enjoy the day!"
+        why = "Low %d\u00b0 at %s - rain %d%%" % (round(low), fmt_hour(low_t), max_pop)
+    return {"text": text, "why": why, "when": label + " 9am-5pm"}
+
+
+def blend():
+    om = get(OM_URL)["hourly"]
+    nws = fetch_nws()
 
     used = 0
     for i, t in enumerate(om["time"]):
@@ -95,8 +169,15 @@ def blend():
         # Gusts, wind direction, and the weather-code-derived icon are left
         # as Open-Meteo's values -- NWS doesn't provide them in a usable form.
 
+    try:
+        rec = recommend(nws)
+    except Exception as e:
+        print("recommendation failed:", e, flush=True)
+        rec = None
+
     return {
         "hourly": om,
+        "recommendation": rec,
         "nws_hours_blended": used,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }

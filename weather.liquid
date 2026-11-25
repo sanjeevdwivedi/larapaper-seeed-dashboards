@@ -126,7 +126,13 @@
       </div>
     </div>
   </div>
-  <div id="{{ chart_id }}" class="w--full h--[10cqh]"></div>
+  {% if recommendation.text %}
+  <div class="w--full text--center" style="border-top:3px solid #000;border-bottom:3px solid #000;padding:6px 0;">
+    <span class="value value--xlarge lg:value--xxlarge 4bit:text--bold 4bit:text--black">{{ recommendation.text }}</span>
+    <span class="label lg:label--large block 4bit:text--bold 4bit:text--black">{{ recommendation.when }} &middot; {{ recommendation.why }}</span>
+  </div>
+  {% endif %}
+  <div id="{{ chart_id }}" class="w--full h--[8cqh]"></div>
   <div class="grid grid--cols-5 gap--medium stretch-y">
     {% for i in (1..5) %}
       {% assign hour = hourly.time[i] | slice: 11, 2 | plus: 0 %}
