@@ -1,0 +1,32 @@
+services:
+    app:
+        image: ghcr.io/usetrmnl/larapaper:latest
+        ports:
+            - "4567:8080"
+        environment:
+            # Generate with: echo "base64:$(openssl rand -base64 32)"
+            - APP_KEY=${APP_KEY}
+            # LAN URL this LXC is reachable at
+            - APP_URL=${APP_URL}
+            - PHP_OPCACHE_ENABLE=1
+            - TRMNL_PROXY_REFRESH_MINUTES=15
+            - DB_DATABASE=database/storage/database.sqlite
+        volumes:
+            - database:/var/www/html/database/storage
+            - storage:/var/www/html/storage/app/public/images/generated
+        restart: unless-stopped
+
+    weather:
+        image: python:3.12-alpine
+        command: python /app/blend.py
+        volumes:
+            - ./weather:/app:ro
+            - weather-data:/data
+        ports:
+            - "8081:8081"
+        restart: unless-stopped
+
+volumes:
+    database:
+    storage:
+    weather-data:

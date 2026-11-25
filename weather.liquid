@@ -1,0 +1,183 @@
+{% comment %}
+  LP Weather (blended Open-Meteo + NWS, LaraPaper recipe)
+  =========================================================
+  Recipe settings (set these in LaraPaper's recipe editor, NOT in this file):
+
+    Method        : GET
+    Polling URL   : http://weather:8081/weather.json
+                    (use http://192.168.24.63:8081/weather.json if the
+                    container-name address doesn't resolve)
+    Headers       : none needed
+    Refresh       : 30-60 minutes (matches the blender's own refresh cadence)
+
+  Data comes from the `weather` sidecar container (see weather/blend.py),
+  which blends Open-Meteo + NWS and exposes a small `hourly` object shaped
+  like Open-Meteo's own response. This template reads ONLY from `hourly`
+  (never a top-level `current`) so nothing in the recipe's Shared tab can
+  silently shadow it.
+
+  Battery badge in the top-right reads trmnl.device.percent_charged, which
+  TRMNL/LaraPaper populates from the device's last check-in.
+{% endcomment %}
+
+{% assign temp_unit = "°F" %}
+{% assign speed_unit = "mph" %}
+{% assign time_format = "12h" %}
+{% assign city = "Sammamish" %}
+{% assign wmo_codes = "0,1,2,3,45,48,51,53,55,56,57,61,63,65,66,67,71,73,75,77,80,81,82,85,86,95,96,99" | split: "," %}
+{% assign wmo_descs = "Clear|Mostly clear|Partly cloudy|Cloudy|Fog|Fog|Light drizzle|Drizzle|Heavy drizzle|Freezing drizzle|Freezing drizzle|Light rain|Rain|Heavy rain|Freezing rain|Freezing rain|Light snow|Snow|Heavy snow|Snow grains|Light rain showers|Rain showers|Heavy rain showers|Snow showers|Heavy snow showers|Thunderstorm|Thunderstorm, hail|Thunderstorm, hail" | split: "|" %}
+{% assign icons_csv = "" %}{% assign descs_csv = "" %}
+{% for i in (0..5) %}
+  {% assign code = hourly.weather_code[i] %}{% assign is_day = hourly.is_day[i] %}
+  {% assign code_s = code | append: "" %}
+  {% assign desc = "Unknown" %}
+  {% for c in wmo_codes %}{% if c == code_s %}{% assign desc = wmo_descs[forloop.index0] %}{% endif %}{% endfor %}
+  {% assign cond = desc | downcase %}
+  {% if is_day == 1 %}
+    {% assign ic = "wi-day-sunny" %}
+    {% if cond contains "thunder" %}{% assign ic = "wi-day-thunderstorm" %}
+    {% elsif cond contains "snow" %}{% assign ic = "wi-day-snow" %}
+    {% elsif cond contains "rain" or cond contains "drizzle" or cond contains "shower" %}{% assign ic = "wi-day-rain" %}
+    {% elsif cond contains "fog" %}{% assign ic = "wi-day-fog" %}
+    {% elsif cond contains "partly cloudy" %}{% assign ic = "wi-day-cloudy" %}
+    {% elsif cond contains "cloud" %}{% assign ic = "wi-cloudy" %}{% endif %}
+  {% else %}
+    {% assign ic = "wi-night-clear" %}
+    {% if cond contains "thunder" %}{% assign ic = "wi-night-alt-thunderstorm" %}
+    {% elsif cond contains "snow" %}{% assign ic = "wi-night-alt-snow" %}
+    {% elsif cond contains "rain" or cond contains "drizzle" or cond contains "shower" %}{% assign ic = "wi-night-alt-rain" %}
+    {% elsif cond contains "fog" %}{% assign ic = "wi-night-fog" %}
+    {% elsif cond contains "partly cloudy" %}{% assign ic = "wi-night-alt-cloudy" %}
+    {% elsif cond contains "cloud" %}{% assign ic = "wi-cloudy" %}{% endif %}
+  {% endif %}
+  {% if i == 0 %}{% assign icons_csv = ic %}{% assign descs_csv = desc %}
+  {% else %}{% assign icons_csv = icons_csv | append: "," | append: ic %}{% assign descs_csv = descs_csv | append: "|" | append: desc %}{% endif %}
+{% endfor %}
+{% assign icons = icons_csv | split: "," %}
+{% assign descs = descs_csv | split: "|" %}
+{% assign cur_month = hourly.time[0] | slice: 5, 2 | plus: 0 %}
+{% assign cur_day = hourly.time[0] | slice: 8, 2 | plus: 0 %}
+
+<div class="view view--{{ size }}" style="position:relative;">
+
+{% assign batt = trmnl.device.percent_charged | default: 0 | round %}
+{% assign batt_fill = batt | times: 24 | divided_by: 100 %}
+<div style="position:absolute;top:8px;right:12px;display:flex;align-items:center;gap:6px;font-size:16px;font-weight:700;z-index:10;">
+  <div style="position:relative;width:28px;height:14px;border:2px solid #000;border-radius:3px;">
+    <div style="position:absolute;left:2px;top:2px;bottom:2px;width:{{ batt_fill }}px;background:#000;"></div>
+    <div style="position:absolute;right:-5px;top:3px;width:3px;height:6px;background:#000;"></div>
+  </div>
+  <span>{{ batt }}%</span>
+</div>
+
+{% assign chart_id = "temp-chart" | append_random %}
+{% assign temp_data = "" %}
+{% for i in (0..5) %}
+  {% assign t = hourly.temperature_2m[i] | round %}
+  {% if i == 0 %}{% assign temp_data = t | append: "" %}{% else %}{% assign temp_data = temp_data | append: "," | append: t %}{% endif %}
+{% endfor %}
+<script src="https://trmnl.com/js/highcharts/12.3.0/highcharts.js"></script>
+<div class="weather layout layout--col gap--large lg:gap--xxlarge">
+  <div class="grid grid--cols-2 gap--large">
+    <div class="flex gap--large flex--center-x flex--center-y">
+      <i class="wi {{ icons[0] }} text--xxxlarge lg:text--mega"></i>
+      <div>
+        <span class="label label--large lg:label--xxlarge text--center block mb--2 4bit:text--bold 4bit:text--black">
+          {{ hourly.time[0] | date: "%A" }}, {{ cur_month }}/{{ cur_day }}
+        </span>
+        <div class="flex flex--center-y gap--small mb--1">
+          <span class="value value--xxlarge lg:value--mega value--tnums">{{ hourly.temperature_2m[0] | round }}</span>
+          <span class="value value--small lg:value--large">{{ temp_unit }}</span>
+        </div>
+        <span class="description description--large lg:description--xxlarge block 4bit:text--bold 4bit:text--black">{{ descs[0] }}</span>
+      </div>
+    </div>
+    <div class="grid grid--cols-2 gap--large">
+      <div class="item">
+        <div class="meta"></div>
+        <div class="content w--full">
+          <span class="value value--small lg:value--large value--tnums">{{ hourly.apparent_temperature[0] | round }} {{ temp_unit }}</span>
+          <span class="label lg:label--xlarge 4bit:text--bold 4bit:text--black">Feels Like</span>
+        </div>
+      </div>
+      <div class="item">
+        <div class="meta"></div>
+        <div class="content w--full">
+          <span class="value value--small lg:value--large value--tnums">
+            {{ hourly.wind_speed_10m[0] | round }}
+            {% render 'wind_arrow', degrees: hourly.wind_direction_10m[0] %}
+          </span>
+          <span class="label lg:label--xlarge 4bit:text--bold 4bit:text--black">Wind ({{ speed_unit }})</span>
+        </div>
+      </div>
+      <div class="item">
+        <div class="meta"></div>
+        <div class="content w--full">
+          <span class="value value--small lg:value--large value--tnums">{{ hourly.precipitation_probability[0] | default: 0 }}%</span>
+          <span class="label lg:label--xlarge 4bit:text--bold 4bit:text--black">Rain</span>
+        </div>
+      </div>
+      <div class="item">
+        <div class="meta"></div>
+        <div class="content w--full">
+          <span class="value value--small lg:value--large value--tnums">{{ hourly.wind_gusts_10m[0] | round }}</span>
+          <span class="label lg:label--xlarge 4bit:text--bold 4bit:text--black">Gust ({{ speed_unit }})</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="{{ chart_id }}" class="w--full h--[10cqh]"></div>
+  <div class="grid grid--cols-5 gap--medium stretch-y">
+    {% for i in (1..5) %}
+      {% assign hour = hourly.time[i] | slice: 11, 2 | plus: 0 %}
+      {% if time_format == "12h" %}
+        {% assign shown_hour = hour %}{% assign period = "AM" %}
+        {% if hour == 0 %}{% assign shown_hour = 12 %}
+        {% elsif hour == 12 %}{% assign period = "PM" %}
+        {% elsif hour > 12 %}{% assign shown_hour = hour | minus: 12 %}{% assign period = "PM" %}{% endif %}
+        {% assign time_string = shown_hour | append: " " | append: period %}
+      {% else %}
+        {% assign time_string = hour | append: ":00" %}
+      {% endif %}
+      <div class="item stretch-y">
+        <div class="meta"></div>
+        <div class="content text--center flex flex--col gap--distribute w--full pb--2">
+          <span class="label lg:label--large block w--full flex--center-x 4bit:text--bold 4bit:text--black">{{ time_string }}</span>
+          <i class="wi {{ icons[i] }} text--xxlarge lg:text--xxxlarge block"></i>
+          <span class="value value--small lg:value--large value--tnums block">{{ hourly.temperature_2m[i] | round }} {{ temp_unit }}</span>
+          <span class="label lg:label--large block 4bit:text--bold 4bit:text--black">Feels: {{ hourly.apparent_temperature[i] | round }}°</span>
+          <div class="flex gap--small flex--center-x">
+            <span class="label lg:label--large flex flex--center-y gap--1 4bit:text--bold 4bit:text--black">
+              <i class="wi wi-raindrop text--xlarge"></i>
+              {{ hourly.precipitation_probability[i] | default: 0 }}%
+            </span>
+            <span class="label lg:label--large flex flex--center-y 4bit:text--bold 4bit:text--black">
+              {{ hourly.wind_speed_10m[i] | round }}
+              {% render 'wind_arrow', degrees: hourly.wind_direction_10m[i] %}
+            </span>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+<div class="title_bar">
+  <span class="title 4bit:text--bold 4bit:text--black">Weather</span>
+  <span class="instance 4bit:text--bold 4bit:text--black">{{ city }}</span>
+</div>
+<script type="text/javascript">
+  document.addEventListener("DOMContentLoaded", function() {
+    var data = "{{ temp_data }}".split(",").map(function(val) { return parseFloat(val); });
+    var lo = Math.min.apply(null, data) - 10;
+    var hi = Math.max.apply(null, data) + 10;
+    Highcharts.chart("{{ chart_id }}", {
+      chart: { type: "line", style: { lineHeight: "0px" }, animation: false, backgroundColor: null, margin: [5, 0, 5, 0], spacing: [0, 0, 0, 0] },
+      title: { text: null }, credits: { enabled: false }, legend: { enabled: false }, tooltip: { enabled: false },
+      plotOptions: { series: { animation: false, enableMouseTracking: false, states: { hover: { enabled: false } }, marker: { enabled: false }, lineWidth: 4, shadow: false }, line: { color: TRMNLCharts.series(0, 1, { el: "{{ chart_id }}" }) } },
+      series: [{ data: data }],
+      xAxis: { visible: false, lineWidth: 0, tickLength: 0, labels: { enabled: false } },
+      yAxis: { visible: false, min: lo, max: hi, startOnTick: false, endOnTick: false, gridLineWidth: 0, labels: { enabled: false }, title: { text: null } }
+    });
+  });
+</script>
+</div>
