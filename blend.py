@@ -87,6 +87,22 @@ def fmt_hour(t):
     return "%d%s" % (h % 12 or 12, "am" if h < 12 else "pm")
 
 
+def intensity(peak_mm_hr):
+    """Standard rain-rate bands, judged on the wettest hour."""
+    if peak_mm_hr < 2.5:
+        return "light"
+    if peak_mm_hr < 7.6:
+        return "medium"
+    return "heavy"
+
+
+def amount_str(total_mm, peak_mm_hr):
+    inches = total_mm / 25.4
+    if inches < 0.005:
+        return ""
+    return "%.2f in, %s" % (inches, intensity(peak_mm_hr))
+
+
 def recommend(nws):
     """Worst-case clothing call for the 9am-5pm window (today, or tomorrow
     once today's window is over). Rain beats temperature."""
@@ -123,7 +139,7 @@ def recommend(nws):
     rainy = max_pop >= RAIN_PROB_MIN and (total_mm >= RAIN_TOTAL_MM or max_hr_mm >= RAIN_HOURLY_MM)
     if rainy:
         text = "Rain Jacket"
-        why = "Rain %d%% around %s - %.1f mm" % (max_pop, fmt_hour(wet_t), total_mm)
+        why = "Rain %d%% around %s - %s" % (max_pop, fmt_hour(wet_t), amount_str(total_mm, max_hr_mm))
     else:
         if low < COLD_CAP_BELOW:
             text = "Jacket + Cap"
@@ -133,7 +149,8 @@ def recommend(nws):
             text = "Thin Fleece"
         else:
             text = "Enjoy the day!"
-        why = "Low %d\u00b0 at %s - rain %d%%" % (round(low), fmt_hour(low_t), max_pop)
+        amt = amount_str(total_mm, max_hr_mm)
+        why = "Low %d\u00b0 at %s - rain %d%%%s" % (round(low), fmt_hour(low_t), max_pop, ", " + amt if amt else "")
     return {"text": text, "why": why, "when": label + " 9am-5pm"}
 
 
