@@ -62,13 +62,6 @@
 
 {% assign batt = trmnl.device.percent_charged | default: 0 | round %}
 {% assign batt_fill = batt | times: 24 | divided_by: 100 %}
-<div style="position:absolute;top:8px;right:12px;display:flex;align-items:center;gap:6px;font-size:16px;font-weight:700;z-index:10;">
-  <div style="position:relative;width:28px;height:14px;border:2px solid #000;border-radius:3px;">
-    <div style="position:absolute;left:2px;top:2px;bottom:2px;width:{{ batt_fill }}px;background:#000;"></div>
-    <div style="position:absolute;right:-5px;top:3px;width:3px;height:6px;background:#000;"></div>
-  </div>
-  <span>{{ batt }}%</span>
-</div>
 
 {% assign chart_id = "temp-chart" | append_random %}
 {% assign temp_data = "" %}
@@ -93,14 +86,14 @@
       </div>
     </div>
     <div class="grid grid--cols-2 gap--large">
-      <div class="item">
+      <div class="item" style="position:relative;top:22px;">
         <div class="meta"></div>
         <div class="content w--full">
           <span class="value value--small lg:value--large value--tnums">{{ hourly.apparent_temperature[0] | round }} {{ temp_unit }}</span>
           <span class="label lg:label--xlarge 4bit:text--bold 4bit:text--black">Feels Like</span>
         </div>
       </div>
-      <div class="item">
+      <div class="item" style="position:relative;top:22px;">
         <div class="meta"></div>
         <div class="content w--full">
           <span class="value value--small lg:value--large value--tnums">
@@ -127,7 +120,7 @@
     </div>
   </div>
   {% if recommendation.text %}
-  <div class="w--full text--center" style="border-top:3px solid #000;border-bottom:3px solid #000;padding:6px 0;">
+  <div class="w--full text--center" style="position:relative;top:5cqh;border-top:3px solid #000;border-bottom:3px solid #000;padding:6px 0;">
     <span class="value value--xlarge lg:value--xxlarge 4bit:text--bold 4bit:text--black">{{ recommendation.text }}</span>
     <span class="label lg:label--large block 4bit:text--bold 4bit:text--black">{{ recommendation.when }} &middot; {{ recommendation.why }}</span>
   </div>
@@ -169,7 +162,16 @@
 </div>
 <div class="title_bar">
   <span class="title 4bit:text--bold 4bit:text--black">Weather</span>
-  <span class="instance 4bit:text--bold 4bit:text--black">{{ city }}</span>
+  <div style="display:flex;align-items:center;margin-left:auto;float:right;">
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:16px;font-weight:700;margin-right:12px;">
+      <span style="position:relative;display:inline-block;width:28px;height:14px;border:2px solid #000;border-radius:3px;">
+        <span style="position:absolute;left:2px;top:2px;bottom:2px;width:{{ batt_fill }}px;background:#000;"></span>
+        <span style="position:absolute;right:-5px;top:3px;width:3px;height:6px;background:#000;"></span>
+      </span>
+      <span>{{ batt }}%</span>
+    </span>
+    <span class="instance 4bit:text--bold 4bit:text--black">{{ city }}</span>
+  </div>
 </div>
 <script type="text/javascript">
   document.addEventListener("DOMContentLoaded", function() {
